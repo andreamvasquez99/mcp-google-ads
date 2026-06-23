@@ -1472,5 +1472,7 @@ async def list_resources(
     return await run_gaql(customer_id, query)
 
 if __name__ == "__main__":
-    # Start the MCP server on stdio transport
-    mcp.run(transport="stdio")
+    import uvicorn
+    port = int(os.environ.get("PORT", 8080))
+    app = mcp.get_asgi_app()
+    uvicorn.run(app, host="0.0.0.0", port=port)
