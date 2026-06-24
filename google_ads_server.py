@@ -1475,14 +1475,57 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 0))
     if port:
         import uvicorn
+        import secrets
         from mcp.server.sse import SseServerTransport
         from starlette.applications import Starlette
         from starlette.routing import Route, Mount
+        from starlette.responses import JSONResponse, RedirectResponse
+
+        async def oauth_metadata(request):
+            base = str(request.base_url).rstrip('/')
+            return JSONResponse({
+                "issuer": base,
+                "authorization_endpoint": f"{base}/oauth/authorize",
+                "token_endpoint": f"{base}/oauth/token",
+                "registration_endpoint": f"{base}/oauth/register",
+                "scopes_supported": ["mcp"],
+                "response_types_supported": ["code"],
+                "grant_types_supported": ["authorization_code"],
+            })
+
+        async def oauth_register(request):
+            body = await request.json()
+            return JSONResponse({
+                "client_id": secrets.token_urlsafe(16),
+                "client_secret": secrets.token_urlsafe(32),
+                **body
+            }, status_code=201)
+
+        async def oauth_authorize(request):
+            params = dict(request.query_params)
+            redirect_uri = params.get("redirect_uri", "")
+            state = params.get("state", "")
+            code = secrets.token_urlsafe(16)
+            return RedirectResponse(f"{redirect_uri}?code={code}&state={state}")
+
+        async def oauth_token(request):
+            return JSONResponse({
+                "access_token": secrets.token_urlsafe(32),
+                "token_type": "bearer",
+                "expires_in": 86400,
+            })
+
         sse = SseServerTransport("/messages/")
+
         async def handle_sse(request):
             async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
                 await mcp._mcp_server.run(streams[0], streams[1], mcp._mcp_server.create_initialization_options())
+
         starlette_app = Starlette(routes=[
+            Route("/.well-known/oauth-authorization-server", endpoint=oauth_metadata),
+            Route("/oauth/register", endpoint=oauth_register, methods=["POST"]),
+            Route("/oauth/authorize", endpoint=oauth_authorize),
+            Route("/oauth/token", endpoint=oauth_token, methods=["POST"]),
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=sse.handle_post_message),
         ])
