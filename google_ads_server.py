@@ -1520,6 +1520,7 @@ if __name__ == "__main__":
         async def handle_sse(request):
             async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
                 await mcp._mcp_server.run(streams[0], streams[1], mcp._mcp_server.create_initialization_options())
+        from starlette.middleware.cors import CORSMiddleware
 
         starlette_app = Starlette(routes=[
             Route("/.well-known/oauth-authorization-server", endpoint=oauth_metadata),
@@ -1529,6 +1530,13 @@ if __name__ == "__main__":
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=sse.handle_post_message),
         ])
+        starlette_app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
         uvicorn.run(starlette_app, host="0.0.0.0", port=port)
     else:
         mcp.run(transport="stdio")
+      
